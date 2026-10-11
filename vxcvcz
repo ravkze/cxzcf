@@ -65,7 +65,6 @@ UI:AddTab('ESP',    'eye',          UI.Sidebar.TopHolder, 1)
 UI:AddTab('Aim',    'crosshairs',   UI.Sidebar.TopHolder, 2)
 UI:AddTab('Visual', 'paint-brush',  UI.Sidebar.TopHolder, 3)
 UI:AddTab('Player', 'person',       UI.Sidebar.TopHolder, 4)
-UI:AddTab('Misc',   'gear',         UI.Sidebar.BotHolder, 1)
 
 -- ==================================================
 -- НАСТРОЙКИ ESP
