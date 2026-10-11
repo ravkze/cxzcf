@@ -1,0 +1,646 @@
+-- ==================================================
+-- SPECTRA CW — ESP MODULE
+-- ==================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+-- ==================================================
+-- SPECTRA UI
+-- ==================================================
+local UI = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/fexures/Spectra.Lua-Libary/main/source"
+))()
+
+-- Fix AddGroupbox
+do
+    function UI:AddGroupbox(tabName, side, title, order)
+        local tab = UI.Tabs[tabName]; if not tab then return end
+        local parent = (side == "Right") and tab.Right or tab.Left
+        local N = function(cls, props)
+            local i = Instance.new(cls)
+            for k, v in pairs(props or {}) do i[k] = v end
+            return i
+        end
+        local group = N("Frame", {
+            Size = UDim2.new(1, 0, 0, 30),
+            BackgroundColor3 = Color3.fromRGB(22, 24, 29),
+            BorderSizePixel = 0, LayoutOrder = order or 1,
+            AutomaticSize = Enum.AutomaticSize.Y, Parent = parent,
+        })
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = group
+        local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(34, 37, 43); s.Thickness = 1; s.Parent = group
+        local p = Instance.new("UIPadding")
+        p.PaddingTop = UDim.new(0, 12); p.PaddingBottom = UDim.new(0, 12)
+        p.PaddingLeft = UDim.new(0, 14); p.PaddingRight = UDim.new(0, 14)
+        p.Parent = group
+        N("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+            Text = string.upper(title), TextColor3 = Color3.fromRGB(122, 127, 136),
+            TextSize = 11, Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left, Parent = group,
+        })
+        local container = N("Frame", {
+            Name = "Container", Size = UDim2.new(1, 0, 0, 0),
+            Position = UDim2.new(0, 0, 0, 22), BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.Y, Parent = group,
+        })
+        N("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 10), Parent = container,
+        })
+        UI.Tabs[tabName].Groups = UI.Tabs[tabName].Groups or {}
+        UI.Tabs[tabName].Groups[title] = { Frame = group, Container = container }
+        return UI.Tabs[tabName].Groups[title]
+    end
+end
+
+-- Вкладки (все 5 — чтобы main.lua мог их заполнить)
+UI:AddTab('ESP',    'eye',          UI.Sidebar.TopHolder, 1)
+UI:AddTab('Aim',    'crosshairs',   UI.Sidebar.TopHolder, 2)
+UI:AddTab('Visual', 'paint-brush',  UI.Sidebar.TopHolder, 3)
+UI:AddTab('Player', 'person',       UI.Sidebar.TopHolder, 4)
+UI:AddTab('Misc',   'gear',         UI.Sidebar.BotHolder, 1)
+
+-- ==================================================
+-- НАСТРОЙКИ ESP
+-- ==================================================
+local Settings = {
+    ESP = true,
+    TeamCheck = true,
+    WallCheck = false,
+    VisibleColor = Color3.fromRGB(255, 255, 255),
+    OccludedColor = Color3.fromRGB(255, 200, 70),
+
+    Box = true,
+    BoxMode = "Corner",
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    BoxThickness = 1,
+    CornerLength = 0.30,
+
+    FilledBox = true,
+    FilledBoxSteps = 200,
+    FilledBoxBottomAlpha = 0.15,
+    FilledBoxTopAlpha = 0,
+    FilledBoxAdaptive = true,
+    FilledBoxNearAlpha = 0.15,
+    FilledBoxFarAlpha = 0.03,
+    FilledBoxNearDist = 100,
+    FilledBoxFarDist = 300,
+
+    HealthBar = true,
+    HealthBarWidth = 3,
+    HealthBarOffset = 6,
+
+    Name = true,
+    NameColor = Color3.fromRGB(255, 255, 255),
+    NameSize = 12,
+
+    Distance = true,
+    DistanceColor = Color3.fromRGB(200, 200, 200),
+    DistanceSize = 10,
+
+    HeadDot = true,
+    HeadDotColor = Color3.fromRGB(255, 255, 255),
+    HeadDotSize = 3,
+
+    Skeleton = true,
+    SkeletonColor = Color3.fromRGB(255, 255, 255),
+    SkeletonThickness = 1,
+}
+
+-- ==================================================
+-- КОМАНДА / ДРУЗЬЯ
+-- ==================================================
+local myTeam = nil
+local function UpdateMyTeam() myTeam = LocalPlayer.Team end
+UpdateMyTeam()
+task.spawn(function() while task.wait(1) do UpdateMyTeam() end end)
+
+local friends = {}
+local function LoadFriends()
+    friends = {}
+    local fs = Players:FindFirstChild("Friends")
+    if fs then
+        for _, f in ipairs(fs:GetChildren()) do
+            if f:IsA("Player") then
+                friends[f.Name] = true
+                friends[f.UserId] = true
+            end
+        end
+    end
+end
+LoadFriends()
+
+-- ==================================================
+-- ХЕЛПЕРЫ
+-- ==================================================
+local BODY_PARTS = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
+
+local MAX_HP_MAP = {
+    Head = 50, Torso = 150,
+    ["Left Arm"] = 100, ["Right Arm"] = 100,
+    ["Left Leg"] = 100, ["Right Leg"] = 100,
+}
+
+local function GetHealth(char)
+    if not char then return 0, 1 end
+    local total, maxTotal = 0, 0
+    for _, name in ipairs(BODY_PARTS) do
+        local part = char:FindFirstChild(name)
+        if part then
+            local hp = part:FindFirstChild("Health")
+            if hp and hp:IsA("ValueBase") then
+                total = total + hp.Value
+                maxTotal = maxTotal + (MAX_HP_MAP[name] or 100)
+            end
+        end
+    end
+    if maxTotal == 0 then return 0, 600 end
+    return total, maxTotal
+end
+
+local function IsVisible(part)
+    if not part then return false end
+    local origin = camera.CFrame.Position
+    local direction = part.Position - origin
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.IgnoreWater = true
+    local exclude = { camera }
+    if LocalPlayer.Character then table.insert(exclude, LocalPlayer.Character) end
+    params.FilterDescendantsInstances = exclude
+    local result = Workspace:Raycast(origin, direction, params)
+    if not result then return true end
+    if result.Instance == part then return true end
+    if result.Instance:IsDescendantOf(part.Parent) then return true end
+    return false
+end
+
+local function GetChar(player)
+    if not player then return nil end
+    local charsFolder = Workspace:FindFirstChild("Characters")
+    if not charsFolder then return nil end
+    return charsFolder:FindFirstChild(player.Name)
+end
+
+-- ==================================================
+-- КЕШ ЦЕЛЕЙ
+-- ==================================================
+local CachedTargets = {}
+
+local function UpdateTargetCache()
+    local list = {}
+    local charsFolder = Workspace:FindFirstChild("Characters")
+    if not charsFolder then CachedTargets = list; return end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        if Settings.TeamCheck and myTeam and player.Team == myTeam then continue end
+        local char = charsFolder:FindFirstChild(player.Name)
+        if not char or not char.Parent then continue end
+        local head = char:FindFirstChild("Head")
+        local torso = char:FindFirstChild("Torso")
+        if not head or not torso then continue end
+        local hp, maxHp = GetHealth(char)
+        if hp <= 0 then continue end
+        table.insert(list, {
+            Player = player, Character = char,
+            Head = head, Torso = torso,
+            Health = hp, MaxHealth = maxHp,
+        })
+    end
+    CachedTargets = list
+end
+
+task.spawn(function() while task.wait(0.3) do UpdateTargetCache() end end)
+task.wait(0.1)
+UpdateTargetCache()
+
+-- ==================================================
+-- DRAWING HELPERS
+-- ==================================================
+local function CreateLine()
+    local ok, l = pcall(function() return Drawing.new("Line") end)
+    if not ok or not l then return nil end
+    l.Thickness = 1; l.Transparency = 1; l.Visible = false
+    return l
+end
+
+local function CreateText()
+    local ok, t = pcall(function() return Drawing.new("Text") end)
+    if not ok or not t then return nil end
+    t.Text = ""; t.Size = 12; t.Font = 2; t.Center = true
+    t.Outline = true; t.OutlineColor = Color3.fromRGB(0, 0, 0)
+    t.Color = Color3.fromRGB(255, 255, 255); t.Transparency = 1; t.Visible = false
+    return t
+end
+
+local function CreateCircle()
+    local ok, c = pcall(function() return Drawing.new("Circle") end)
+    if not ok or not c then return nil end
+    c.Thickness = 1; c.NumSides = 16; c.Filled = true
+    c.Transparency = 1; c.Color = Color3.fromRGB(255, 255, 255); c.Visible = false
+    return c
+end
+
+-- ==================================================
+-- BOUNDS
+-- ==================================================
+local function CalculateBounds(char)
+    if not char or not char.Parent then return nil end
+    local corners = {}
+    for _, partName in ipairs(BODY_PARTS) do
+        local part = char:FindFirstChild(partName)
+        if part and part:IsA("BasePart") then
+            local cf, sz = part.CFrame, part.Size
+            for x = -1, 1, 2 do for y = -1, 1, 2 do for z = -1, 1, 2 do
+                local wp = cf * Vector3.new(sz.X/2*x, sz.Y/2*y, sz.Z/2*z)
+                local sp, on = camera:WorldToViewportPoint(wp)
+                if on then table.insert(corners, Vector2.new(sp.X, sp.Y)) end
+            end end end
+        end
+    end
+    if #corners < 1 then return nil end
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    for _, c in ipairs(corners) do
+        minX = math.min(minX, c.X); maxX = math.max(maxX, c.X)
+        minY = math.min(minY, c.Y); maxY = math.max(maxY, c.Y)
+    end
+    return { minX = minX, maxX = maxX, minY = minY, maxY = maxY }
+end
+
+-- ==================================================
+-- ESP OBJECTS
+-- ==================================================
+local ESPObjects = {}
+
+local function DestroyESP(player)
+    local o = ESPObjects[player]
+    if not o then return end
+    if o.CornerLines then for _, l in ipairs(o.CornerLines) do if l then l:Remove() end end end
+    if o.BoxLines then for _, l in ipairs(o.BoxLines) do if l then l:Remove() end end end
+    if o.FilledLines then for _, l in ipairs(o.FilledLines) do if l then l:Remove() end end end
+    if o.SkeletonLines then for _, l in ipairs(o.SkeletonLines) do if l then l:Remove() end end end
+    if o.HealthBarBg then o.HealthBarBg:Remove() end
+    if o.HealthBarFill then o.HealthBarFill:Remove() end
+    if o.NameText then o.NameText:Remove() end
+    if o.DistText then o.DistText:Remove() end
+    if o.HeadDot then o.HeadDot:Remove() end
+    ESPObjects[player] = nil
+end
+
+local function CreateESP(targetData)
+    local o = {}
+    o.CornerLines = {}
+    for i = 1, 8 do
+        local l = CreateLine(); if l then table.insert(o.CornerLines, l) end
+    end
+    o.BoxLines = {}
+    for i = 1, 4 do
+        local l = CreateLine(); if l then table.insert(o.BoxLines, l) end
+    end
+    o.FilledLines = {}
+    for i = 1, Settings.FilledBoxSteps do
+        local l = CreateLine(); if l then table.insert(o.FilledLines, l) end
+    end
+    o.SkeletonLines = {}
+    for i = 1, 5 do
+        local l = CreateLine(); if l then table.insert(o.SkeletonLines, l) end
+    end
+    o.HealthBarBg = CreateLine()
+    o.HealthBarFill = CreateLine()
+    o.NameText = CreateText()
+    o.DistText = CreateText()
+    o.HeadDot = CreateCircle()
+    o.Character = targetData.Character
+    o.LastBox = nil
+    ESPObjects[targetData.Player] = o
+    return o
+end
+
+-- ==================================================
+-- BOX / SKELETON UPDATE
+-- ==================================================
+local function UpdateBox(o)
+    local box = o.LastBox
+    if not Settings.Box or not box then
+        for _, l in ipairs(o.CornerLines) do l.Visible = false end
+        for _, l in ipairs(o.BoxLines) do l.Visible = false end
+        for _, l in ipairs(o.FilledLines) do l.Visible = false end
+        return
+    end
+
+    local minX, maxX, minY, maxY = box.minX, box.maxX, box.minY, box.maxY
+    local w, h = maxX - minX, maxY - minY
+
+    if Settings.FilledBox and #o.FilledLines > 0 then
+        local bottomAlpha = Settings.FilledBoxBottomAlpha
+        if Settings.FilledBoxAdaptive and o.Character then
+            local hrp = o.Character:FindFirstChild("Torso") or o.Character:FindFirstChild("Head")
+            if hrp then
+                local dist = (camera.CFrame.Position - hrp.Position).Magnitude
+                local nearD, farD = Settings.FilledBoxNearDist, Settings.FilledBoxFarDist
+                if dist <= nearD then
+                    bottomAlpha = Settings.FilledBoxNearAlpha
+                elseif dist >= farD then
+                    bottomAlpha = Settings.FilledBoxFarAlpha
+                else
+                    local t = (dist - nearD) / (farD - nearD)
+                    bottomAlpha = Settings.FilledBoxNearAlpha + (Settings.FilledBoxFarAlpha - Settings.FilledBoxNearAlpha) * t
+                end
+            end
+        end
+        local steps = Settings.FilledBoxSteps
+        local boxH = math.max(h, 1)
+        for i = 1, steps do
+            local line = o.FilledLines[i]
+            if line then
+                local t = (i - 1) / math.max(steps - 1, 1)
+                local y = maxY - t * boxH
+                local alpha = bottomAlpha + (Settings.FilledBoxTopAlpha - bottomAlpha) * t
+                line.From = Vector2.new(minX, y)
+                line.To = Vector2.new(maxX, y)
+                line.Color = o.CurrentColor or Settings.BoxColor
+                line.Thickness = math.max(1, math.ceil(boxH / steps) + 1)
+                line.Transparency = alpha
+                line.Visible = true
+            end
+        end
+    else
+        for _, l in ipairs(o.FilledLines) do l.Visible = false end
+    end
+
+    if Settings.BoxMode == "Corner" then
+        local len = math.min(w, h) * Settings.CornerLength
+        local segments = {
+            {Vector2.new(minX, minY), Vector2.new(minX + len, minY)},
+            {Vector2.new(minX, minY), Vector2.new(minX, minY + len)},
+            {Vector2.new(maxX, minY), Vector2.new(maxX - len, minY)},
+            {Vector2.new(maxX, minY), Vector2.new(maxX, minY + len)},
+            {Vector2.new(minX, maxY), Vector2.new(minX + len, maxY)},
+            {Vector2.new(minX, maxY), Vector2.new(minX, maxY - len)},
+            {Vector2.new(maxX, maxY), Vector2.new(maxX - len, maxY)},
+            {Vector2.new(maxX, maxY), Vector2.new(maxX, maxY - len)},
+        }
+        for i, seg in ipairs(segments) do
+            local l = o.CornerLines[i]
+            if l then
+                l.From = seg[1]; l.To = seg[2]
+                l.Color = o.CurrentColor or Settings.BoxColor
+                l.Thickness = Settings.BoxThickness
+                l.Visible = true
+            end
+        end
+        for _, l in ipairs(o.BoxLines) do l.Visible = false end
+    else
+        local segments = {
+            {Vector2.new(minX, minY), Vector2.new(maxX, minY)},
+            {Vector2.new(maxX, minY), Vector2.new(maxX, maxY)},
+            {Vector2.new(maxX, maxY), Vector2.new(minX, maxY)},
+            {Vector2.new(minX, maxY), Vector2.new(minX, minY)},
+        }
+        for i, seg in ipairs(segments) do
+            local l = o.BoxLines[i]
+            if l then
+                l.From = seg[1]; l.To = seg[2]
+                l.Color = o.CurrentColor or Settings.BoxColor
+                l.Thickness = Settings.BoxThickness
+                l.Visible = true
+            end
+        end
+        for _, l in ipairs(o.CornerLines) do l.Visible = false end
+    end
+end
+
+local SKELETON_CONNECTIONS = {
+    {"Head", "Torso"}, {"Torso", "Left Arm"}, {"Torso", "Right Arm"},
+    {"Torso", "Left Leg"}, {"Torso", "Right Leg"},
+}
+
+local function UpdateSkeleton(char, o)
+    for _, l in ipairs(o.SkeletonLines) do l.Visible = false end
+    if not Settings.Skeleton then return end
+    local idx = 1
+    for _, conn in ipairs(SKELETON_CONNECTIONS) do
+        local p1 = char:FindFirstChild(conn[1])
+        local p2 = char:FindFirstChild(conn[2])
+        if p1 and p2 and p1:IsA("BasePart") and p2:IsA("BasePart") then
+            local s1, on1 = camera:WorldToViewportPoint(p1.Position)
+            local s2, on2 = camera:WorldToViewportPoint(p2.Position)
+            local l = o.SkeletonLines[idx]
+            if l then
+                if on1 and on2 then
+                    l.From = Vector2.new(s1.X, s1.Y)
+                    l.To = Vector2.new(s2.X, s2.Y)
+                    l.Color = Settings.SkeletonColor
+                    l.Thickness = Settings.SkeletonThickness
+                    l.Visible = true
+                end
+                idx = idx + 1
+            end
+        end
+    end
+end
+
+-- ==================================================
+-- ESP UPDATE
+-- ==================================================
+local function UpdateESP()
+    if not Settings.ESP then
+        for p in pairs(ESPObjects) do DestroyESP(p) end
+        return
+    end
+    local current = {}
+    for _, targetData in ipairs(CachedTargets) do
+        local player = targetData.Player
+        local char = targetData.Character
+        current[player] = true
+
+        local o = ESPObjects[player]
+        if not o or o.Character ~= char then
+            if o then DestroyESP(player) end
+            o = CreateESP(targetData)
+        end
+
+        -- Wallcheck 2 цвета
+        local currentColor = Settings.BoxColor
+        if Settings.WallCheck then
+            local isVisible = false
+            for _, partName in ipairs({"Torso", "Head"}) do
+                local part = char:FindFirstChild(partName)
+                if part and IsVisible(part) then isVisible = true; break end
+            end
+            currentColor = isVisible and Settings.VisibleColor or Settings.OccludedColor
+        end
+        o.CurrentColor = currentColor
+
+        o.LastBox = CalculateBounds(char)
+        UpdateBox(o)
+        UpdateSkeleton(char, o)
+
+        local hp, maxHp = targetData.Health, targetData.MaxHealth
+        local ratio = math.clamp(hp / maxHp, 0, 1)
+
+        if o.LastBox and Settings.HealthBar then
+            local box = o.LastBox
+            local barX = box.minX - Settings.HealthBarOffset
+            local barTop, barBottom = box.minY, box.maxY
+            local fillTop = barBottom - (barBottom - barTop) * ratio
+            if o.HealthBarBg then
+                o.HealthBarBg.From = Vector2.new(barX, barTop)
+                o.HealthBarBg.To = Vector2.new(barX, barBottom)
+                o.HealthBarBg.Color = Color3.fromRGB(30, 30, 30)
+                o.HealthBarBg.Thickness = Settings.HealthBarWidth
+                o.HealthBarBg.Visible = true
+            end
+            if o.HealthBarFill then
+                o.HealthBarFill.From = Vector2.new(barX, fillTop)
+                o.HealthBarFill.To = Vector2.new(barX, barBottom)
+                o.HealthBarFill.Color = Color3.fromRGB((1 - ratio) * 255, ratio * 255, 0)
+                o.HealthBarFill.Thickness = Settings.HealthBarWidth
+                o.HealthBarFill.Visible = true
+            end
+        else
+            if o.HealthBarBg then o.HealthBarBg.Visible = false end
+            if o.HealthBarFill then o.HealthBarFill.Visible = false end
+        end
+
+        if o.LastBox then
+            local box = o.LastBox
+            local centerX = (box.minX + box.maxX) / 2
+            if o.NameText then
+                if Settings.Name then
+                    o.NameText.Text = player.DisplayName
+                    o.NameText.Size = Settings.NameSize
+                    o.NameText.Color = Settings.NameColor
+                    o.NameText.Position = Vector2.new(centerX, box.minY - Settings.NameSize - 4)
+                    o.NameText.Visible = true
+                else o.NameText.Visible = false end
+            end
+            if o.DistText then
+                if Settings.Distance and targetData.Torso then
+                    local dist = (camera.CFrame.Position - targetData.Torso.Position).Magnitude
+                    o.DistText.Text = string.format("%.0f studs", dist)
+                    o.DistText.Size = Settings.DistanceSize
+                    o.DistText.Color = Settings.DistanceColor
+                    o.DistText.Position = Vector2.new(centerX, box.maxY + 4)
+                    o.DistText.Visible = true
+                else o.DistText.Visible = false end
+            end
+        else
+            if o.NameText then o.NameText.Visible = false end
+            if o.DistText then o.DistText.Visible = false end
+        end
+
+        if o.HeadDot and Settings.HeadDot and targetData.Head then
+            local hp2, on = camera:WorldToViewportPoint(targetData.Head.Position)
+            if on then
+                o.HeadDot.Position = Vector2.new(hp2.X, hp2.Y)
+                o.HeadDot.Radius = Settings.HeadDotSize
+                o.HeadDot.Color = Settings.HeadDotColor
+                o.HeadDot.Visible = true
+            else o.HeadDot.Visible = false end
+        elseif o.HeadDot then o.HeadDot.Visible = false end
+    end
+    for player in pairs(ESPObjects) do
+        if not current[player] then DestroyESP(player) end
+    end
+end
+
+RunService.RenderStepped:Connect(UpdateESP)
+
+-- ==================================================
+-- ESP UI
+-- ==================================================
+local ESPGroup = UI:AddGroupbox('ESP', 'Left', 'ESP', 1)
+
+UI:AddToggle('ESP_Enabled', { Text = 'Enable ESP', Default = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.ESP = v end })
+
+UI:AddToggle('ESP_Team', { Text = 'Team Check', Default = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.TeamCheck = v; UpdateTargetCache() end })
+
+UI:AddToggle('ESP_Wall', {
+    Text = 'Wall Check (2 colors)', Default = false, HasArrow = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.WallCheck = v end,
+    Settings = function(panel)
+        local gen = panel:AddGroupbox('Colors', 1)
+        panel:AddColorPicker('ESP_VisibleColor', { Text = 'Visible Color',
+            Default = Color3.fromRGB(255, 255, 255), Groupbox = gen,
+            Callback = function(c) Settings.VisibleColor = c end })
+        panel:AddColorPicker('ESP_OccludedColor', { Text = 'Occluded Color',
+            Default = Color3.fromRGB(255, 200, 70), Groupbox = gen,
+            Callback = function(c) Settings.OccludedColor = c end })
+    end,
+})
+
+UI:AddToggle('ESP_Box', {
+    Text = 'Box', Default = true, HasArrow = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.Box = v end,
+    Settings = function(panel)
+        local gen = panel:AddGroupbox('General', 1)
+        panel:AddDropdown('ESP_BoxMode', { Text = 'Box Mode',
+            Values = {'Corner', 'Default'}, Default = 'Corner', Groupbox = gen,
+            Callback = function(v) Settings.BoxMode = v end })
+        panel:AddToggle('ESP_Filled', { Text = 'Filled Box', Default = true, Groupbox = gen,
+            Callback = function(v) Settings.FilledBox = v end })
+        panel:AddSlider('ESP_BoxThick', { Text = 'Thickness',
+            Default = 1, Min = 1, Max = 5, Rounding = 0, Groupbox = gen,
+            Callback = function(v) Settings.BoxThickness = v end })
+        panel:AddSlider('ESP_CornerLen', { Text = 'Corner Length (%)',
+            Default = 30, Min = 5, Max = 50, Rounding = 0, Groupbox = gen,
+            Callback = function(v) Settings.CornerLength = v / 100 end })
+        local col = panel:AddGroupbox('Colors', 2)
+        panel:AddColorPicker('ESP_BoxColor', { Text = 'Box Color',
+            Default = Color3.fromRGB(255, 255, 255), Groupbox = col,
+            Callback = function(c) Settings.BoxColor = c end })
+    end,
+})
+
+UI:AddToggle('ESP_Health', {
+    Text = 'Health Bar', Default = true, HasArrow = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.HealthBar = v end,
+    Settings = function(panel)
+        local gen = panel:AddGroupbox('General', 1)
+        panel:AddSlider('ESP_HealthWidth', { Text = 'Width',
+            Default = 3, Min = 1, Max = 10, Rounding = 0, Groupbox = gen,
+            Callback = function(v) Settings.HealthBarWidth = v end })
+        panel:AddSlider('ESP_HealthOffset', { Text = 'Offset',
+            Default = 6, Min = 0, Max = 30, Rounding = 0, Groupbox = gen,
+            Callback = function(v) Settings.HealthBarOffset = v end })
+    end,
+})
+
+UI:AddToggle('ESP_Name', { Text = 'Name', Default = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.Name = v end })
+UI:AddToggle('ESP_Distance', { Text = 'Distance', Default = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.Distance = v end })
+UI:AddToggle('ESP_HeadDot', { Text = 'Head Dot', Default = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.HeadDot = v end })
+UI:AddToggle('ESP_Skeleton', { Text = 'Skeleton', Default = true, Groupbox = ESPGroup,
+    Callback = function(v) Settings.Skeleton = v end })
+
+-- ==================================================
+-- ЭКСПОРТ В _G
+-- ==================================================
+_G.SpectraCW = _G.SpectraCW or {}
+_G.SpectraCW.UI = UI
+_G.SpectraCW.Settings = Settings
+_G.SpectraCW.myTeam = myTeam
+_G.SpectraCW.friends = friends
+_G.SpectraCW.IsVisible = IsVisible
+_G.SpectraCW.GetHealth = GetHealth
+_G.SpectraCW.GetChar = GetChar
+_G.SpectraCW.BODY_PARTS = BODY_PARTS
+_G.SpectraCW.camera = camera
+_G.SpectraCW.LocalPlayer = LocalPlayer
+_G.SpectraCW.CachedTargets = CachedTargets
+
+print("[Spectra CW] ESP loaded + exported to _G.SpectraCW")
