@@ -1,6 +1,3 @@
--- ==================================================
--- SPECTRA CW — ESP MODULE
--- ==================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -9,14 +6,10 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
--- ==================================================
--- SPECTRA UI
--- ==================================================
 local UI = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/fexures/Spectra.Lua-Libary/main/source"
 ))()
 
--- Fix AddGroupbox
 do
     function UI:AddGroupbox(tabName, side, title, order)
         local tab = UI.Tabs[tabName]; if not tab then return end
@@ -60,15 +53,11 @@ do
     end
 end
 
--- Вкладки (все 5 — чтобы main.lua мог их заполнить)
 UI:AddTab('ESP',    'eye',          UI.Sidebar.TopHolder, 1)
 UI:AddTab('Aim',    'crosshairs',   UI.Sidebar.TopHolder, 2)
 UI:AddTab('Visual', 'paint-brush',  UI.Sidebar.TopHolder, 3)
 UI:AddTab('Player', 'person',       UI.Sidebar.TopHolder, 4)
 
--- ==================================================
--- НАСТРОЙКИ ESP
--- ==================================================
 local Settings = {
     ESP = true,
     TeamCheck = true,
@@ -113,9 +102,6 @@ local Settings = {
     SkeletonThickness = 1,
 }
 
--- ==================================================
--- КОМАНДА / ДРУЗЬЯ
--- ==================================================
 local myTeam = nil
 local function UpdateMyTeam() myTeam = LocalPlayer.Team end
 UpdateMyTeam()
@@ -136,9 +122,6 @@ local function LoadFriends()
 end
 LoadFriends()
 
--- ==================================================
--- ХЕЛПЕРЫ
--- ==================================================
 local BODY_PARTS = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
 
 local MAX_HP_MAP = {
@@ -188,9 +171,6 @@ local function GetChar(player)
     return charsFolder:FindFirstChild(player.Name)
 end
 
--- ==================================================
--- КЕШ ЦЕЛЕЙ
--- ==================================================
 local CachedTargets = {}
 
 local function UpdateTargetCache()
@@ -221,9 +201,6 @@ task.spawn(function() while task.wait(0.3) do UpdateTargetCache() end end)
 task.wait(0.1)
 UpdateTargetCache()
 
--- ==================================================
--- DRAWING HELPERS
--- ==================================================
 local function CreateLine()
     local ok, l = pcall(function() return Drawing.new("Line") end)
     if not ok or not l then return nil end
@@ -248,9 +225,6 @@ local function CreateCircle()
     return c
 end
 
--- ==================================================
--- BOUNDS
--- ==================================================
 local function CalculateBounds(char)
     if not char or not char.Parent then return nil end
     local corners = {}
@@ -275,9 +249,6 @@ local function CalculateBounds(char)
     return { minX = minX, maxX = maxX, minY = minY, maxY = maxY }
 end
 
--- ==================================================
--- ESP OBJECTS
--- ==================================================
 local ESPObjects = {}
 
 local function DestroyESP(player)
@@ -324,9 +295,6 @@ local function CreateESP(targetData)
     return o
 end
 
--- ==================================================
--- BOX / SKELETON UPDATE
--- ==================================================
 local function UpdateBox(o)
     local box = o.LastBox
     if not Settings.Box or not box then
@@ -448,9 +416,6 @@ local function UpdateSkeleton(char, o)
     end
 end
 
--- ==================================================
--- ESP UPDATE
--- ==================================================
 local function UpdateESP()
     if not Settings.ESP then
         for p in pairs(ESPObjects) do DestroyESP(p) end
@@ -468,7 +433,6 @@ local function UpdateESP()
             o = CreateESP(targetData)
         end
 
-        -- Wallcheck 2 цвета
         local currentColor = Settings.BoxColor
         if Settings.WallCheck then
             local isVisible = false
@@ -555,9 +519,6 @@ end
 
 RunService.RenderStepped:Connect(UpdateESP)
 
--- ==================================================
--- ESP UI
--- ==================================================
 local ESPGroup = UI:AddGroupbox('ESP', 'Left', 'ESP', 1)
 
 UI:AddToggle('ESP_Enabled', { Text = 'Enable ESP', Default = true, Groupbox = ESPGroup,
@@ -626,9 +587,6 @@ UI:AddToggle('ESP_HeadDot', { Text = 'Head Dot', Default = false, Groupbox = ESP
 UI:AddToggle('ESP_Skeleton', { Text = 'Skeleton', Default = true, Groupbox = ESPGroup,
     Callback = function(v) Settings.Skeleton = v end })
 
--- ==================================================
--- ЭКСПОРТ В _G
--- ==================================================
 _G.SpectraCW = _G.SpectraCW or {}
 _G.SpectraCW.UI = UI
 _G.SpectraCW.Settings = Settings
@@ -641,5 +599,3 @@ _G.SpectraCW.BODY_PARTS = BODY_PARTS
 _G.SpectraCW.camera = camera
 _G.SpectraCW.LocalPlayer = LocalPlayer
 _G.SpectraCW.CachedTargets = CachedTargets
-
-print("[Spectra CW] ESP loaded + exported to _G.SpectraCW")
