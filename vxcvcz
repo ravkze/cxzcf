@@ -587,6 +587,148 @@ UI:AddToggle('ESP_HeadDot', { Text = 'Head Dot', Default = false, Groupbox = ESP
 UI:AddToggle('ESP_Skeleton', { Text = 'Skeleton', Default = true, Groupbox = ESPGroup,
     Callback = function(v) Settings.Skeleton = v end })
 
+local ChamsSettings = {
+    Enabled = false,
+    Mode = "Filled",              
+    VisibleColor = Color3.fromRGB(255, 70, 70),
+    OccludedColor = Color3.fromRGB(255, 200, 70),
+    FillTransparency = 0.5,
+    OutlineTransparency = 0,
+    TeamCheck = true,
+    UseOccludedCheck = true,      
+}
+
+local ChamsHighlights = {}
+
+local function DestroyChams(player)
+    local hl = ChamsHighlights[player]
+    if hl then hl:Destroy() end
+    ChamsHighlights[player] = nil
+end
+
+local function UpdateChams()
+    if not ChamsSettings.Enabled then
+        for p in pairs(ChamsHighlights) do DestroyChams(p) end
+        return
+    end
+
+    local current = {}
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        if ChamsSettings.TeamCheck and myTeam and player.Team == myTeam then continue end
+
+        local char = GetChar(player)
+        if not char or not char.Parent then continue end
+
+        local head = char:FindFirstChild("Head")
+        if not head then continue end
+
+        current[player] = true
+
+        local hl = ChamsHighlights[player]
+        if not hl or hl.Parent ~= char then
+            if hl then hl:Destroy() end
+            hl = Instance.new("Highlight")
+            hl.Name = "SpectraChams"
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = char
+            hl.Parent = char
+            ChamsHighlights[player] = hl
+        end
+
+        local color = ChamsSettings.VisibleColor
+        if ChamsSettings.UseOccludedCheck then
+            local torso = char:FindFirstChild("Torso") or head
+            local isVisible = IsVisible(torso)
+            color = isVisible and ChamsSettings.VisibleColor or ChamsSettings.OccludedColor
+        end
+
+        if ChamsSettings.Mode == "Filled" then
+            hl.FillColor = color
+            hl.OutlineColor = color
+            hl.FillTransparency = ChamsSettings.FillTransparency
+            hl.OutlineTransparency = 1   
+        elseif ChamsSettings.Mode == "Outline" then
+            hl.FillColor = color
+            hl.OutlineColor = color
+            hl.FillTransparency = 1      
+            hl.OutlineTransparency = ChamsSettings.OutlineTransparency
+        end
+    end
+
+    for p in pairs(ChamsHighlights) do
+        if not current[p] then DestroyChams(p) end
+    end
+end
+
+task.spawn(function()
+    while task.wait(1/30) do
+        UpdateChams()
+    end
+end)
+
+local ChamsGroup = UI:AddGroupbox('ESP', 'Right', 'Chams', 1)
+
+UI:AddToggle('Chams_Enabled', {
+    Text = 'Chams Enabled',
+    Default = false,
+    Groupbox = ChamsGroup,
+    Callback = function(v) ChamsSettings.Enabled = v end,
+})
+
+UI:AddDropdown('Chams_Mode', {
+    Text = 'Mode',
+    Values = { 'Filled', 'Outline' },
+    Default = 'Filled',
+    Groupbox = ChamsGroup,
+    Callback = function(v) ChamsSettings.Mode = v end,
+})
+
+UI:AddToggle('Chams_Team', {
+    Text = 'Team Check',
+    Default = true,
+    Groupbox = ChamsGroup,
+    Callback = function(v) ChamsSettings.TeamCheck = v end,
+})
+
+UI:AddToggle('Chams_OccludedCheck', {
+    Text = 'Color by Visibility',
+    Default = true,
+    Groupbox = ChamsGroup,
+    Callback = function(v) ChamsSettings.UseOccludedCheck = v end,
+})
+
+UI:AddColorPicker('Chams_VisibleColor', {
+    Text = 'Visible Color',
+    Default = Color3.fromRGB(255, 70, 70),
+    Groupbox = ChamsGroup,
+    Callback = function(c) ChamsSettings.VisibleColor = c end,
+})
+
+UI:AddColorPicker('Chams_OccludedColor', {
+    Text = 'Occluded Color',
+    Default = Color3.fromRGB(255, 200, 70),
+    Groupbox = ChamsGroup,
+    Callback = function(c) ChamsSettings.OccludedColor = c end,
+})
+
+UI:AddSlider('Chams_FillTransp', {
+    Text = 'Fill Transparency',
+    Default = 50,
+    Min = 0, Max = 100, Rounding = 0, Suffix = '%',
+    Groupbox = ChamsGroup,
+    Callback = function(v) ChamsSettings.FillTransparency = v / 100 end,
+})
+
+UI:AddSlider('Chams_OutlineTransp', {
+    Text = 'Outline Transparency',
+    Default = 0,
+    Min = 0, Max = 100, Rounding = 0, Suffix = '%',
+    Groupbox = ChamsGroup,
+    Callback = function(v) ChamsSettings.OutlineTransparency = v / 100 end,
+})
+
 _G.SpectraCW = _G.SpectraCW or {}
 _G.SpectraCW.UI = UI
 _G.SpectraCW.Settings = Settings
