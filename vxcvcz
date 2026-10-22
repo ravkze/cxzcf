@@ -618,7 +618,7 @@ local function UpdateChams()
 
     local current = {}
     
-    local partsToHighlight = { "Head", "Torso", "Left Arm", "Right Arm" } 
+    local partsToHighlight = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
