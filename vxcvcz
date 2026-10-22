@@ -601,9 +601,13 @@ local ChamsSettings = {
 local ChamsHighlights = {}
 
 local function DestroyChams(player)
-    local hl = ChamsHighlights[player]
-    if hl then hl:Destroy() end
-    ChamsHighlights[player] = nil
+    local parts = ChamsHighlights[player]
+    if parts then
+        for _, hl in pairs(parts) do
+            if hl then hl:Destroy() end
+        end
+        ChamsHighlights[player] = nil
+    end
 end
 
 local function UpdateChams()
@@ -613,6 +617,8 @@ local function UpdateChams()
     end
 
     local current = {}
+    
+    local partsToHighlight = { "Head", "Torso", "Left Arm", "Right Arm" } 
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
@@ -621,42 +627,48 @@ local function UpdateChams()
         local char = GetChar(player)
         if not char or not char.Parent then continue end
 
-        local head = char:FindFirstChild("Head")
-        if not head then continue end
-
         current[player] = true
 
-        local hl = ChamsHighlights[player]
-        if not hl or hl.Adornee ~= char then
-            if hl then hl:Destroy() end
-            hl = Instance.new("Highlight")
-            hl.Name = tostring(math.random(100000, 999999)) 
-            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            hl.Adornee = char
-            hl.Parent = game:GetService("CoreGui")            
-            ChamsHighlights[player] = hl
+        local playerHighlights = ChamsHighlights[player]
+        if not playerHighlights then
+            playerHighlights = {}
+            ChamsHighlights[player] = playerHighlights
         end
 
-        local color = ChamsSettings.VisibleColor
-        if ChamsSettings.UseOccludedCheck then
-            local torso = char:FindFirstChild("Torso") or head
-            local isVisible = IsVisible(torso)
-            color = isVisible and ChamsSettings.VisibleColor or ChamsSettings.OccludedColor
-        end
+        for _, partName in ipairs(partsToHighlight) do
+            local part = char:FindFirstChild(partName)
+            if part and part:IsA("BasePart") then
+                local hl = playerHighlights[partName]
+                if not hl or hl.Adornee ~= part then
+                    if hl then hl:Destroy() end
+                    hl = Instance.new("Highlight")
+                    hl.Name = tostring(math.random(100000, 999999))
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    hl.Adornee = part
+                    hl.Parent = game:GetService("CoreGui")
+                    playerHighlights[partName] = hl
+                end
 
-        if ChamsSettings.Mode == "Filled" then
-            hl.FillColor = color
-            hl.OutlineColor = color
-            hl.FillTransparency = ChamsSettings.FillTransparency
-            hl.OutlineTransparency = 1
-        elseif ChamsSettings.Mode == "Outline" then
-            hl.FillColor = color
-            hl.OutlineColor = color
-            hl.FillTransparency = 1
-            hl.OutlineTransparency = ChamsSettings.OutlineTransparency
+                local color = ChamsSettings.VisibleColor
+                if ChamsSettings.UseOccludedCheck then
+                    local isVisible = IsVisible(part)
+                    color = isVisible and ChamsSettings.VisibleColor or ChamsSettings.OccludedColor
+                end
+
+                if ChamsSettings.Mode == "Filled" then
+                    hl.FillColor = color
+                    hl.OutlineColor = color
+                    hl.FillTransparency = ChamsSettings.FillTransparency
+                    hl.OutlineTransparency = 1   
+                elseif ChamsSettings.Mode == "Outline" then
+                    hl.FillColor = color
+                    hl.OutlineColor = color
+                    hl.FillTransparency = 1      
+                    hl.OutlineTransparency = ChamsSettings.OutlineTransparency
+                end
+            end
         end
     end
-
     for p in pairs(ChamsHighlights) do
         if not current[p] then DestroyChams(p) end
     end
