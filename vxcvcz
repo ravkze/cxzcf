@@ -627,13 +627,13 @@ local function UpdateChams()
         current[player] = true
 
         local hl = ChamsHighlights[player]
-        if not hl or hl.Parent ~= char then
+        if not hl or hl.Adornee ~= char then
             if hl then hl:Destroy() end
             hl = Instance.new("Highlight")
-            hl.Name = "SpectraChams"
+            hl.Name = tostring(math.random(100000, 999999)) 
             hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             hl.Adornee = char
-            hl.Parent = char
+            hl.Parent = game:GetService("CoreGui")            
             ChamsHighlights[player] = hl
         end
 
@@ -648,11 +648,11 @@ local function UpdateChams()
             hl.FillColor = color
             hl.OutlineColor = color
             hl.FillTransparency = ChamsSettings.FillTransparency
-            hl.OutlineTransparency = 1   
+            hl.OutlineTransparency = 1
         elseif ChamsSettings.Mode == "Outline" then
             hl.FillColor = color
             hl.OutlineColor = color
-            hl.FillTransparency = 1      
+            hl.FillTransparency = 1
             hl.OutlineTransparency = ChamsSettings.OutlineTransparency
         end
     end
